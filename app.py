@@ -1,4 +1,6 @@
-from tempfile import NamedTemporaryFile
+import os
+import pathlib
+import tempfile
 
 import streamlit as st
 from langchain.agents import initialize_agent
@@ -7,59 +9,138 @@ from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 
 from tools import ImageCaptionTool, ObjectDetectionTool
 
+# -------------------------------------------------
+# Streamlit page config (MUST BE FIRST STREAMLIT CALL)
+# -------------------------------------------------
+st.set_page_config(
+    page_title="Vision-LLM Image QA",
+    layout="centered"
+)
 
-##############################
-### initialize agent #########
-##############################
-tools = [ImageCaptionTool(), ObjectDetectionTool()]
+# -------------------------------
+# Custom CSS Styling
+# -------------------------------
+st.markdown(
+    """
+    <style>
+        .main {
+            background-color: #fafafa;
+        }
+        .title-text {
+            text-align: center;
+            font-size: 42px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .subtitle-text {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 30px;
+        }
+        footer {
+            visibility: hidden;
+        }
+        .custom-footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background-color: #ffffff;
+            color: #666;
+            text-align: center;
+            padding: 10px 0;
+            font-size: 14px;
+            border-top: 1px solid #eaeaea;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-conversational_memory = ConversationBufferWindowMemory(
-    memory_key='chat_history',
+# --------------------------------
+# Initialize LangChain Agent
+# --------------------------------
+tools = [
+    ImageCaptionTool(),
+    ObjectDetectionTool()
+]
+
+memory = ConversationBufferWindowMemory(
+    memory_key="chat_history",
     k=5,
     return_messages=True
 )
 
 llm = ChatOpenAI(
-    openai_api_key='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',
+    model_name="gpt-3.5-turbo",
     temperature=0,
-    model_name="gpt-3.5-turbo"
+    openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
 agent = initialize_agent(
     agent="chat-conversational-react-description",
     tools=tools,
     llm=llm,
-    max_iterations=5,
+    memory=memory,
     verbose=True,
-    memory=conversational_memory,
-    early_stopping_method='generate'
+    max_iterations=5,
+    early_stopping_method="generate"
 )
 
-# set title
-st.title('Ask a question to an image')
+# --------------------------------
+# Streamlit UI
+# --------------------------------
+st.markdown(
+    '<div class="title-text">🖼️ Ask a Question About an Image</div>',
+    unsafe_allow_html=True
+)
 
-# set header
-st.header("Please upload an image")
+st.markdown(
+    '<div class="subtitle-text">'
+    'Upload an image and ask natural language questions powered by Vision + LLMs'
+    '</div>',
+    unsafe_allow_html=True
+)
 
-# upload file
-file = st.file_uploader("", type=["jpeg", "jpg", "png"])
+uploaded_file = st.file_uploader(
+    "Upload an image",
+    type=["jpg", "jpeg", "png"]
+)
 
-if file:
-    # display image
-    st.image(file, use_column_width=True)
+if uploaded_file is not None:
+    st.image(uploaded_file, use_column_width=True)
 
-    # text input
-    user_question = st.text_input('Ask a question about your image:')
+    user_question = st.text_input(
+        "Ask a question about the image:"
+    )
 
-    ##############################
-    ### compute agent response ###
-    ##############################
-    with NamedTemporaryFile(dir='.') as f:
-        f.write(file.getbuffer())
-        image_path = f.name
+    if user_question:
+        suffix = pathlib.Path(uploaded_file.name).suffix
 
-        # write agent response
-        if user_question and user_question != "":
-            with st.spinner(text="In progress..."):
-                response = agent.run('{}, this is the image path: {}'.format(user_question, image_path))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(uploaded_file.getbuffer())
+            image_path = tmp.name
+
+        try:
+            with st.spinner("Analyzing image..."):
+                response = agent.run(
+                    f"{user_question}, this is the image path: {image_path}"
+                )
+                st.success("Answer:")
                 st.write(response)
+        finally:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+
+# --------------------------------
+# Footer
+# --------------------------------
+st.markdown(
+    """
+    <div class="custom-footer">
+        © 2026 Adnan Faisal. All rights reserved.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
