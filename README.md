@@ -11,6 +11,7 @@ Below is an example of the application in action:
 
 ![Vision-LLM Image QA Demo](assets/demo.png)
 
+![Vision-LLM Image QA Demo](assets/Demo_Video.mp4)
 ---
 
 ## 🚀 Project Overview
